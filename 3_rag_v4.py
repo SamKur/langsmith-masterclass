@@ -1,5 +1,23 @@
 # pip install -U langchain langchain-openai langchain-community faiss-cpu pypdf python-dotenv langsmith
 
+
+"""
+Reuse exisiting index -> 
+
+It triggers the build path in exactly these cases:
+
+No cache exists yet means First-ever run
+
+PDF content changes.
+
+PDF file metadata (for e.g. size) changes.
+
+Chunking params change -> chunk size or chunk overlap.
+
+Embedding model name changes -> e.g., from "text-embedding-3-small" to
+another model.
+"""
+
 import os
 import json
 import hashlib
@@ -23,18 +41,18 @@ INDEX_ROOT = Path(".indices")
 INDEX_ROOT.mkdir(exist_ok=True)
 
 # ----------------- helpers (traced) -----------------
-@traceable(name="load_pdf")
+@traceable(name="load_pdf")             # level 3 inside setup_pipeline
 def load_pdf(path: str):
     return PyPDFLoader(path).load()  # list[Document]
 
-@traceable(name="split_documents")
+@traceable(name="split_documents")      # level 3 inside setup_pipeline
 def split_documents(docs, chunk_size=1000, chunk_overlap=150):
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size, chunk_overlap=chunk_overlap
     )
     return splitter.split_documents(docs)
 
-@traceable(name="build_vectorstore")
+@traceable(name="build_vectorstore")    # level 3 inside setup_pipeline
 def build_vectorstore(splits, embed_model_name: str):
     emb = OpenAIEmbeddings(model=embed_model_name)
     return FAISS.from_documents(splits, emb)
@@ -59,7 +77,7 @@ def _index_key(pdf_path: str, chunk_size: int, chunk_overlap: int, embed_model_n
     return hashlib.sha256(json.dumps(meta, sort_keys=True).encode("utf-8")).hexdigest()
 
 # ----------------- explicitly traced load/build runs -----------------
-@traceable(name="load_index", tags=["index"])
+@traceable(name="load_index", tags=["index"])   # level 2 inside setup_pipeline ORR below func
 def load_index_run(index_dir: Path, embed_model_name: str):
     emb = OpenAIEmbeddings(model=embed_model_name)
     return FAISS.load_local(
@@ -68,7 +86,7 @@ def load_index_run(index_dir: Path, embed_model_name: str):
         allow_dangerous_deserialization=True
     )
 
-@traceable(name="build_index", tags=["index"])
+@traceable(name="build_index", tags=["index"])  # level 2 inside setup_pipeline
 def build_index_run(pdf_path: str, index_dir: Path, chunk_size: int, chunk_overlap: int, embed_model_name: str):
     docs = load_pdf(pdf_path)  # child
     splits = split_documents(docs, chunk_size=chunk_size, chunk_overlap=chunk_overlap)  # child
@@ -110,7 +128,7 @@ prompt = ChatPromptTemplate.from_messages([
 def format_docs(docs):
     return "\n\n".join(d.page_content for d in docs)
 
-@traceable(name="setup_pipeline", tags=["setup"])
+@traceable(name="setup_pipeline", tags=["setup"])   # inside trace, this is a run
 def setup_pipeline(pdf_path: str, chunk_size=1000, chunk_overlap=150, embed_model_name="text-embedding-3-small", force_rebuild=False):
     return load_or_build_index(
         pdf_path=pdf_path,
@@ -140,7 +158,7 @@ def setup_pipeline_and_query(
 
     return chain.invoke(
         question,
-        config={"run_name": "pdf_rag_query", "tags": ["qa"], "metadata": {"k": 4}}
+        config={"run_name": "pdf_rag_query", "tags": ["qa"], "metadata": {"k": 4}}  # inside trace, this is a run - inside this entire chain
     )
 
 # ----------------- CLI -----------------

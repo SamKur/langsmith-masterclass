@@ -51,7 +51,7 @@ class UPSCState(TypedDict, total=False):
     individual_scores: Annotated[List[int], operator.add]  # merges parallel lists
     avg_score: float
 
-# ---------- Traced node functions ----------
+# ---------- Traced node functions, these are OPTIONAL ----------
 @traceable(name="evaluate_language_fn", tags=["dimension:language"], metadata={"dimension": "language"})
 def evaluate_language(state: UPSCState):
     prompt = (
@@ -116,7 +116,7 @@ if __name__ == "__main__":
     result = workflow.invoke(
         {"essay": essay2},
         config={
-            "run_name": "evaluate_upsc_essay",  # becomes root run name
+            "run_name": "evaluate_upsc_essay",  # becomes ROOT RUN name
             "tags": ["essay", "langgraph", "evaluation"],
             "metadata": {
                 "essay_length": len(essay2),
